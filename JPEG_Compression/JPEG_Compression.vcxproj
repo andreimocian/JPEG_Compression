@@ -171,7 +171,18 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\JPEGCompressor.cpp" />
     <ClCompile Include="src\main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="images\airplane.bmp" />
+    <Image Include="images\Lena.bmp" />
+    <Image Include="images\Malamute.bmp" />
+    <Image Include="images\monarch.bmp" />
+    <Image Include="images\Rainier.bmp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\JPEGCompressor.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -18,5 +18,30 @@
     <ClCompile Include="src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\JPEGCompressor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="images\airplane.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="images\Lena.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="images\Malamute.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="images\monarch.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="images\Rainier.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\JPEGCompressor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
