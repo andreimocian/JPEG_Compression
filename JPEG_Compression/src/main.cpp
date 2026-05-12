@@ -10,6 +10,7 @@ int main()
 	cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_FATAL);
 	Mat_<Vec3b> img = imread("images/Lena.bmp", IMREAD_COLOR);
 
-	JPEGCompressor program(img);
+	JPEGCompressor compressor(img);
+	compressor.compress();
 	return 0;
 }
