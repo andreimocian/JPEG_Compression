@@ -31,6 +31,17 @@ JPEGCompressor::JPEGCompressor(Mat_<Vec3b> initial_img)
 		{99, 99, 99, 99, 99, 99, 99, 99},
 		{99, 99, 99, 99, 99, 99, 99, 99}
 	};
+
+	this->zig_zag_table = {
+		{0,0}, {0,1}, {1,0}, {2,0}, {1,1}, {0,2}, {0,3}, {1,2},
+		{2,1}, {3,0}, {4,0}, {3,1}, {2,2}, {1,3}, {0,4}, {0,5},
+		{1,4}, {2,3}, {3,2}, {4,1}, {5,0}, {6,0}, {5,1}, {4,2},
+		{3,3}, {2,4}, {1,5}, {0,6}, {0,7}, {1,6}, {2,5}, {3,4},
+		{4,3}, {5,2}, {6,1}, {7,0}, {7,1}, {6,2}, {5,3}, {4,4},
+		{3,5}, {2,6}, {1,7}, {2,7}, {3,6}, {4,5}, {5,4}, {6,3},
+		{7,2}, {7,3}, {6,4}, {5,5}, {4,6}, {3,7}, {4,7}, {5,6},
+		{6,5}, {7,4}, {7,5}, {6,6}, {5,7}, {6,7}, {7,6}, {7,7}
+	};
 }
 
 void JPEGCompressor::split_Y_Cr_Cb(Mat_<Vec3b> initial_img)
@@ -66,13 +77,6 @@ void JPEGCompressor::image_padding()
 	}
 	this->rows_with_padding = this->padded_channels[0].rows;
 	this->cols_with_padding = this->padded_channels[0].cols;
-
-	imshow("Y", this->padded_channels[0]);
-	imshow("Cr", padded_channels[1]);
-	imshow("Cb", padded_channels[2]);
-	std::cout << this->rows << " " << this->cols << "\n";
-	std::cout << this->rows_with_padding << " " << this->cols_with_padding << "\n";
-	waitKey(0);
 }
 
 static Mat_<float> convert_to_float(Mat_<uchar> img)
@@ -121,16 +125,50 @@ Mat_<int> JPEGCompressor::quantization(const Mat_<float>& dct_res, int channel)
 		for (int j = 0; j < 8; j++)
 		{
 			if (channel == Y_CHANNEL)
-				res(i, j) = (int)std::round(dct_res(i, j) / this->quantization_table_chrominance[i][j]);
-			else
 				res(i, j) = (int)std::round(dct_res(i, j) / this->quantization_table_luminance[i][j]);
+			else
+				res(i, j) = (int)std::round(dct_res(i, j) / this->quantization_table_chrominance[i][j]);
 		}
 	}
 	return res;
 }
 
-void JPEGCompressor::process_blocks()
+std::vector<int> JPEGCompressor::zig_zag(const Mat_<int>& quantized_block)
 {
+	std::vector<int> res(64);
+	for (int i = 0; i < 64; i++)
+	{
+		res[i] = quantized_block(this->zig_zag_table[i].first, this->zig_zag_table[i].second);
+	}
+	return res;
+}
+
+std::vector<JPEGCompressor::RLEpair> JPEGCompressor::run_length_encoding(const std::vector<int>& zig_zagged)
+{
+	std::vector<JPEGCompressor::RLEpair> res;
+
+	int nr_of_zeroes = 0;
+
+	for (int i = 0; i < 64; i++)
+	{
+		if (zig_zagged[i] == 0)
+		{
+			nr_of_zeroes++;
+		}
+		else
+		{
+			res.push_back({ nr_of_zeroes, zig_zagged[i] });
+			nr_of_zeroes = 0;
+		}
+	}
+	res.push_back({ 0, 0 });
+	return res;
+}
+
+void JPEGCompressor::process_blocks_forward()
+{
+	std::vector<std::vector<std::vector<JPEGCompressor::RLEpair>>> compressed_img(3); //channels, blocks, pairs
+	
 	for (int channel = 0; channel < 3; channel++)
 	{
 		for (int i = 0; i < this->rows_with_padding; i += 8)
@@ -146,13 +184,56 @@ void JPEGCompressor::process_blocks()
 				Mat_<float> dct_res = f_dct(block_8x8_float);
 
 				Mat_<int> quantized_block = quantization(dct_res, channel);
+
+				std::vector<int> zig_zagged = zig_zag(quantized_block);
+
+				std::vector<JPEGCompressor::RLEpair> compressed_block = run_length_encoding(zig_zagged);
+
+				compressed_img[channel].push_back(compressed_block);
 			}
 		}
 	}
+	this->compressed_img = compressed_img;
+}
+
+void JPEGCompressor::save_as_binary(std::string path)
+{
+	std::ofstream fout(path, std::ios_base::binary);
+
+	fout.write((char*)&this->rows, sizeof(this->rows));
+	fout.write((char*)&this->cols, sizeof(this->cols));
+	fout.write((char*)&this->rows_with_padding, sizeof(this->rows_with_padding));
+	fout.write((char*)&this->cols_with_padding, sizeof(this->cols_with_padding));
+
+	int nr_channels = 3;
+	fout.write((char*)&nr_channels, sizeof(nr_channels));
+
+	for (int channel = 0; channel < 3; channel++)
+	{
+		int nr_blocks = this->compressed_img[channel].size();
+		fout.write((char*)&nr_blocks, sizeof(nr_blocks));
+
+		for (int block = 0; block < nr_blocks; block++)
+		{
+			int nr_pairs = this->compressed_img[channel][block].size();
+			fout.write((char*)&nr_pairs, sizeof(nr_pairs));
+
+			for (int k = 0; k < nr_pairs; k++)
+			{
+				JPEGCompressor::RLEpair pair = this->compressed_img[channel][block][k];
+
+				fout.write((char*)&pair.zeros, sizeof(pair.zeros));
+				fout.write((char*)&pair.value, sizeof(pair.value));
+			}
+		}
+	}
+
+	fout.close();
 }
 
 void JPEGCompressor::compress()
 {
 	this->image_padding();
-	this->process_blocks();
+	this->process_blocks_forward();
+	this->save_as_binary("imgg.bin");
 }
