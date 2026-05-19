@@ -13,15 +13,25 @@ class JPEGCompressor
 public:
 	JPEGCompressor(Mat_<Vec3b> initial_img);
 	void compress();
-	void save_as_binary(std::string path);
+	Mat_<Vec3b> decompress(std::string path);
 
 private:
 	void split_Y_Cr_Cb(Mat_<Vec3b> initial_img);
 	void image_padding();
 	void process_blocks_forward();
+
+
 	Mat_<float> f_dct(const Mat_<float>& block_8x8_float);
 	Mat_<int> quantization(const Mat_<float>& res, int channel);
 	std::vector<int> zig_zag(const Mat_<int>& quantized_block);
+	void save_as_binary(std::string path);
+
+	/* Decompression */
+
+	Mat_<int> inverse_zig_zag(const std::vector<int>& zig_zagged);
+	Mat_<float> dequantization(const Mat_<int>& quantized_block, int channel);
+	Mat_<float> i_dct(const Mat_<float>& d_block);
+
 
 	std::vector<Mat_<uchar>> channels;
 	std::vector<Mat_<uchar>> padded_channels;
@@ -45,5 +55,8 @@ private:
 
 	std::vector<RLEpair> run_length_encoding(const std::vector<int>& zig_zagged);
 	std::vector<std::vector<std::vector<RLEpair>>> compressed_img; //channels, blocks, pairs
+
+
+	std::vector<int> inverse_run_length_encoding(const std::vector<RLEpair>& rle_block);
 };
 

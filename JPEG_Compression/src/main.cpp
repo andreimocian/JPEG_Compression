@@ -8,9 +8,16 @@
 int main()
 {
 	cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_FATAL);
-	Mat_<Vec3b> img = imread("images/Lena.bmp", IMREAD_COLOR);
+	Mat_<Vec3b> img = imread("images/airplane.bmp", IMREAD_COLOR);
+
 
 	JPEGCompressor compressor(img);
 	compressor.compress();
+	Mat_<Vec3b> decompressed_img = compressor.decompress("test");
+
+
+	imshow("Initial image", img);
+	imshow("Decompressed image", decompressed_img);
+	waitKey(0);
 	return 0;
 }

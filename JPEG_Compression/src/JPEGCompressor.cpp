@@ -176,17 +176,12 @@ void JPEGCompressor::process_blocks_forward()
 			for (int j = 0; j < this->cols_with_padding; j += 8)
 			{
 				Mat_<uchar> block_8x8 = padded_channels[channel](Rect(j, i, 8, 8));
-
 				Mat_<float> block_8x8_float = convert_to_float(block_8x8);
-
 				block_8x8_float -= 128.0f;
 
 				Mat_<float> dct_res = f_dct(block_8x8_float);
-
 				Mat_<int> quantized_block = quantization(dct_res, channel);
-
 				std::vector<int> zig_zagged = zig_zag(quantized_block);
-
 				std::vector<JPEGCompressor::RLEpair> compressed_block = run_length_encoding(zig_zagged);
 
 				compressed_img[channel].push_back(compressed_block);
@@ -235,5 +230,127 @@ void JPEGCompressor::compress()
 {
 	this->image_padding();
 	this->process_blocks_forward();
-	this->save_as_binary("imgg.bin");
+	this->save_as_binary("img.bin");
+}
+
+
+/* Decompression */
+
+
+std::vector<int> JPEGCompressor::inverse_run_length_encoding(const std::vector<RLEpair>& rle_block)
+{
+	std::vector<int> res;
+
+	for (int i = 0; i < rle_block.size(); i++)
+	{
+		if (rle_block[i].value == 0 && rle_block[i].zeros == 0)
+			break;
+
+		for (int j = 0; j < rle_block[i].zeros; j++)
+		{
+			res.push_back(0);
+		}
+		res.push_back(rle_block[i].value);
+	}
+
+	while (res.size() < 64)
+		res.push_back(0);
+
+	return res;
+}
+
+Mat_<int> JPEGCompressor::inverse_zig_zag(const std::vector<int>& zig_zagged)
+{
+	Mat_<int> res(8, 8);
+
+	for (int i = 0; i < 64; i++)
+	{
+		res(this->zig_zag_table[i].first, this->zig_zag_table[i].second) = zig_zagged[i];
+	}
+
+	return res;
+}
+
+Mat_<float> JPEGCompressor::dequantization(const Mat_<int>& quantized_block, int channel)
+{
+	Mat_<float> res(8, 8);
+	for (int i = 0; i < 8; i++)
+	{
+		for (int j = 0; j < 8; j++)
+		{
+			if (channel == Y_CHANNEL)
+				res(i, j) = (float)(quantized_block(i, j) * this->quantization_table_luminance[i][j]);
+			else
+				res(i, j) = (float)(quantized_block(i, j) * this->quantization_table_chrominance[i][j]);
+		}
+	}
+	return res;
+}
+
+Mat_<float> JPEGCompressor::i_dct(const Mat_<float>& d_block)
+{
+	Mat_<float> res(8, 8);
+	for (int x = 0; x < 8; x++)
+	{
+		for (int y = 0; y < 8; y++)
+		{
+			float sum = 0.0f;
+
+			for (int u = 0; u < 8; u++)
+			{
+				for (int v = 0; v < 8; v++)
+				{
+					float Cu = (u == 0 ? 1 / sqrt(2) : 1);
+					float Cv = (v == 0 ? 1 / sqrt(2) : 1);
+
+					sum += Cu * Cv * d_block(u, v) * cos(((2 * x + 1) * u * CV_PI) / 16) * cos(((2 * y + 1) * v * CV_PI) / 16);
+				}
+			}
+			res(x, y) = (1.0f / 4.0f) * sum;
+		}
+	}
+
+	return res;
+}
+
+Mat_<Vec3b> JPEGCompressor::decompress(std::string path)
+{
+	std::vector<Mat_<uchar>> channels(3);
+
+	for (int channel = 0; channel < 3; channel++)
+	{
+		channels[channel] = Mat_<uchar>(this->rows_with_padding, this->cols_with_padding);
+		int block = 0;
+
+		for (int i = 0; i < this->rows_with_padding; i += 8)
+		{
+			for (int j = 0; j < this->cols_with_padding; j += 8)
+			{
+				std::vector<JPEGCompressor::RLEpair> rle_block = this->compressed_img[channel][block];
+
+				std::vector<int> zig_zagged = inverse_run_length_encoding(rle_block);
+				Mat_<int> quantized_block = inverse_zig_zag(zig_zagged);
+				Mat_<float> dequantizied_block = dequantization(quantized_block, channel);
+				Mat_<float> initial_block = i_dct(dequantizied_block);
+
+				initial_block += 128.0f;
+
+				Mat_<uchar> uchar_block;
+				initial_block.convertTo(uchar_block, CV_8U);
+				uchar_block.copyTo(channels[channel](Rect(j, i, 8, 8)));
+
+				block++;
+			}
+		}
+	}
+
+	Mat_<Vec3b> reconstructed_img_ycrcb;
+	merge(channels, reconstructed_img_ycrcb);
+
+	Mat_<Vec3b> reconstructed_img_rgb;
+	cvtColor(reconstructed_img_ycrcb, reconstructed_img_rgb, COLOR_YCrCb2BGR);
+
+	Mat_<Vec3b> final_img = reconstructed_img_rgb(Rect(0, 0, this->cols, this->rows)).clone();
+
+	return final_img;
 }
