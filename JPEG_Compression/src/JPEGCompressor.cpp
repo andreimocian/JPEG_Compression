@@ -241,13 +241,13 @@ float JPEGCompressor::calculate_compression_ratio(std::string initial_path, std:
 	return (float)initial_size / (float)compressed_size;
 }
 
-void JPEGCompressor::compress(std::string path)
+void JPEGCompressor::compress(std::string path, std::string file_name)
 {
 	this->load_initial_image(path);
 	this->image_padding();
 	this->process_blocks_forward();
-	this->save_as_binary("img.bin");
-	std::cout << "Compression ratio: " << this->calculate_compression_ratio(path, "img.bin") << ":1" << "\n";
+	this->save_as_binary(file_name);
+	std::cout << "Compression ratio: " << this->calculate_compression_ratio(path, file_name) << ":1" << "\n";
 }
 
 

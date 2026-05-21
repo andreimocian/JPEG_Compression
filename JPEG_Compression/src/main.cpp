@@ -12,7 +12,7 @@ int main()
 
 
 	JPEGCompressor compressor;
-	compressor.compress("images/airplane.bmp");
+	compressor.compress("images/airplane.bmp", "img.bin");
 	Mat_<Vec3b> decompressed_img = compressor.decompress("img.bin");
 
 

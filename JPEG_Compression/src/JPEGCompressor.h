@@ -13,7 +13,7 @@ class JPEGCompressor
 {
 public:
 	JPEGCompressor();
-	void compress(std::string path);
+	void compress(std::string path, std::string file_name);
 	Mat_<Vec3b> decompress(std::string path);
 
 private:
