@@ -5,20 +5,24 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <fstream>
+#include <filesystem>
 
 using namespace cv;
 
 class JPEGCompressor
 {
 public:
-	JPEGCompressor(Mat_<Vec3b> initial_img);
-	void compress();
+	JPEGCompressor();
+	void compress(std::string path);
 	Mat_<Vec3b> decompress(std::string path);
 
 private:
-	void split_Y_Cr_Cb(Mat_<Vec3b> initial_img);
+	std::vector<Mat_<uchar>> split_Y_Cr_Cb(Mat_<Vec3b> initial_img);
 	void image_padding();
 	void process_blocks_forward();
+	void read_binary_file(std::string path);
+	void load_initial_image(std::string path);
+	float calculate_compression_ratio(std::string initial_path, std::string compressed_path);
 
 
 	Mat_<float> f_dct(const Mat_<float>& block_8x8_float);
@@ -49,8 +53,8 @@ private:
 
 	struct RLEpair 
 	{
-		int zeros;
-		int value;
+		unsigned char zeros;
+		short int value;
 	};
 
 	std::vector<RLEpair> run_length_encoding(const std::vector<int>& zig_zagged);

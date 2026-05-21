@@ -1,15 +1,7 @@
 #include "JPEGCompressor.h"
 
-JPEGCompressor::JPEGCompressor(Mat_<Vec3b> initial_img)
+JPEGCompressor::JPEGCompressor()
 {
-	Mat_<Vec3b> ycrcb_img;
-	this->rows = initial_img.rows;
-	this->cols = initial_img.cols;
-	this->padded_channels.resize(3);
-	cvtColor(initial_img, ycrcb_img, COLOR_BGR2YCrCb);
-
-	split_Y_Cr_Cb(ycrcb_img);
-
 	this->quantization_table_luminance = {
 		{16, 11, 10, 16, 24, 40, 51, 61},
 		{12, 12, 14, 19, 26, 58, 60, 55},
@@ -44,10 +36,11 @@ JPEGCompressor::JPEGCompressor(Mat_<Vec3b> initial_img)
 	};
 }
 
-void JPEGCompressor::split_Y_Cr_Cb(Mat_<Vec3b> initial_img)
+std::vector<Mat_<uchar>> JPEGCompressor::split_Y_Cr_Cb(Mat_<Vec3b> initial_img)
 {
 	Mat_<uchar> Y(initial_img.rows, initial_img.cols), Cr(initial_img.rows, initial_img.cols), Cb(initial_img.rows, initial_img.cols);
 	Vec3b pixel;
+	std::vector<Mat_<uchar>> channels;
 
 	for (int i = 0; i < initial_img.rows; i++)
 	{
@@ -59,8 +52,8 @@ void JPEGCompressor::split_Y_Cr_Cb(Mat_<Vec3b> initial_img)
 			Cb(i, j) = pixel[2];
 		}
 	}
-
-	this->channels = { Y, Cr, Cb };
+	channels = { Y, Cr, Cb };
+	return channels;
 }
 
 void JPEGCompressor::image_padding()
@@ -147,7 +140,7 @@ std::vector<JPEGCompressor::RLEpair> JPEGCompressor::run_length_encoding(const s
 {
 	std::vector<JPEGCompressor::RLEpair> res;
 
-	int nr_of_zeroes = 0;
+	unsigned char nr_of_zeroes = 0;
 
 	for (int i = 0; i < 64; i++)
 	{
@@ -157,7 +150,7 @@ std::vector<JPEGCompressor::RLEpair> JPEGCompressor::run_length_encoding(const s
 		}
 		else
 		{
-			res.push_back({ nr_of_zeroes, zig_zagged[i] });
+			res.push_back({ nr_of_zeroes, (short int)zig_zagged[i] });
 			nr_of_zeroes = 0;
 		}
 	}
@@ -200,9 +193,6 @@ void JPEGCompressor::save_as_binary(std::string path)
 	fout.write((char*)&this->rows_with_padding, sizeof(this->rows_with_padding));
 	fout.write((char*)&this->cols_with_padding, sizeof(this->cols_with_padding));
 
-	int nr_channels = 3;
-	fout.write((char*)&nr_channels, sizeof(nr_channels));
-
 	for (int channel = 0; channel < 3; channel++)
 	{
 		int nr_blocks = this->compressed_img[channel].size();
@@ -226,16 +216,80 @@ void JPEGCompressor::save_as_binary(std::string path)
 	fout.close();
 }
 
-void JPEGCompressor::compress()
+void JPEGCompressor::load_initial_image(std::string path)
 {
+	Mat_<Vec3b> initial_img = imread(path, IMREAD_COLOR);
+	Mat_<Vec3b> ycrcb_img;
+
+	this->rows = initial_img.rows;
+	this->cols = initial_img.cols;
+	this->padded_channels.resize(3);
+	cvtColor(initial_img, ycrcb_img, COLOR_BGR2YCrCb);
+
+	this->channels = split_Y_Cr_Cb(ycrcb_img);
+}
+
+float JPEGCompressor::calculate_compression_ratio(std::string initial_path, std::string compressed_path)
+{
+	std::uintmax_t initial_size = std::filesystem::file_size(initial_path);
+	std::uintmax_t compressed_size = std::filesystem::file_size(compressed_path);
+
+	return (float)initial_size / (float)compressed_size;
+}
+
+void JPEGCompressor::compress(std::string path)
+{
+	this->load_initial_image(path);
 	this->image_padding();
 	this->process_blocks_forward();
 	this->save_as_binary("img.bin");
+	std::cout << "Compression ratio: " << this->calculate_compression_ratio(path, "img.bin") << ":1" << "\n";
 }
 
 
 /* Decompression */
 
+
+void JPEGCompressor::read_binary_file(std::string path)
+{
+	std::ifstream fin(path, std::ios_base::binary);
+
+	fin.read((char*)&this->rows, sizeof(this->rows));
+	fin.read((char*)&this->cols, sizeof(this->cols));
+	fin.read((char*)&this->rows_with_padding, sizeof(this->rows_with_padding));
+	fin.read((char*)&this->cols_with_padding, sizeof(this->cols_with_padding));
+
+	this->compressed_img.clear();
+	this->compressed_img.resize(3);
+
+	for (int channel = 0; channel < 3; channel++)
+	{
+		int nr_blocks;
+		fin.read((char*)&nr_blocks, sizeof(nr_blocks));
+
+		this->compressed_img[channel].resize(nr_blocks);
+
+		for (int block = 0; block < nr_blocks; block++)
+		{
+			int nr_pairs;
+			fin.read((char*)&nr_pairs, sizeof(nr_pairs));
+
+			this->compressed_img[channel][block].resize(nr_pairs);
+
+			for (int k = 0; k < nr_pairs; k++)
+			{
+				RLEpair pair;
+
+				fin.read((char*)&pair.zeros, sizeof(pair.zeros));
+				fin.read((char*)&pair.value, sizeof(pair.value));
+
+				this->compressed_img[channel][block][k] = pair;
+			}
+		}
+	}
+
+	fin.close();
+}
 
 std::vector<int> JPEGCompressor::inverse_run_length_encoding(const std::vector<RLEpair>& rle_block)
 {
@@ -315,6 +369,8 @@ Mat_<float> JPEGCompressor::i_dct(const Mat_<float>& d_block)
 
 Mat_<Vec3b> JPEGCompressor::decompress(std::string path)
 {
+	this->read_binary_file(path);
+
 	std::vector<Mat_<uchar>> channels(3);
 
 	for (int channel = 0; channel < 3; channel++)

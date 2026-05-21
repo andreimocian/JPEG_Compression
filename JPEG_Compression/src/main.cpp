@@ -11,9 +11,9 @@ int main()
 	Mat_<Vec3b> img = imread("images/airplane.bmp", IMREAD_COLOR);
 
 
-	JPEGCompressor compressor(img);
-	compressor.compress();
-	Mat_<Vec3b> decompressed_img = compressor.decompress("test");
+	JPEGCompressor compressor;
+	compressor.compress("images/airplane.bmp");
+	Mat_<Vec3b> decompressed_img = compressor.decompress("img.bin");
 
 
 	imshow("Initial image", img);
