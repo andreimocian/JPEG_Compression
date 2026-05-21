@@ -85,6 +85,10 @@ static Mat_<float> convert_to_float(Mat_<uchar> img)
 	return intermidiate;
 }
 
+
+/* Compression */
+
+
 Mat_<float> JPEGCompressor::f_dct(const Mat_<float>& block_8x8_float)
 {
 	Mat_<float> res(8, 8);
